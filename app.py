@@ -4,6 +4,8 @@ import os
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime,timedelta
 import openai
+from flask_login import LoginManager, login_user, login_required, current_user
+
 app = Flask(__name__)
 
 # Configure the SQLAlchemy part of the app instance
@@ -14,6 +16,9 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # Create an SQLAlchemy object named `db` and bind it to your app
 db = SQLAlchemy(app)
+login_manager = LoginManager()
+login_manager.init_app(app)
+
 
 # OpenAI API key setup
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -23,10 +28,10 @@ class User(db.Model):
     userid = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(255), nullable=False)
     sessions = db.relationship('Session', backref='user', lazy=True)
+  # Assuming the password is already hashed
+    password = db.Column(db.String(100))
+    sessions = db.relationship('Session', backref='user', lazy='dynamic')
 
-    def __repr__(self):
-        return f'<User {self.username}>'
-# Define the Sessions model
 class Session(db.Model):
     __tablename__ = 'sessions'
     sessionid = db.Column(db.Integer, primary_key=True)
@@ -34,16 +39,44 @@ class Session(db.Model):
     starttime = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     messages = db.relationship('Message', backref='session', lazy=True)
 
-# Define the Messages model
 class Message(db.Model):
     __tablename__ = 'messages'
     messageid = db.Column(db.Integer, primary_key=True)
     sessionid = db.Column(db.Integer, db.ForeignKey('sessions.sessionid'), nullable=False)
     userid = db.Column(db.Integer, db.ForeignKey('users.userid'), nullable=False)
     messagetext = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.DateTime, nullable=False,default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     reply = db.Column(db.Text, nullable=False)
 # Route to add a new user (as an example)
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data['username']
+    password = data['password']  # In real app, ensure you hash and verify the password securely
+    user = User.query.filter_by(username=username).first()
+    if user and user.password == password:  # This should use a password hash checking method!
+        login_user(user)
+        return jsonify({'message': 'Logged in successfully'}), 200
+    return jsonify({'error': 'Invalid username or password'}), 401
+
+@app.route('/session', methods=['POST'])
+@login_required
+def create_session():
+    new_session = Session(userid=current_user.userid)
+    db.session.add(new_session)
+    db.session.commit()
+    return jsonify({
+        'message': 'New session created successfully',
+        'session_id': new_session.sessionid,
+        'user_id': current_user.userid
+    }), 201
+
+
+
+
+
+
+
 @app.route('/add_user', methods=['POST'])
 def add_user():
     data = request.get_json()
@@ -52,42 +85,10 @@ def add_user():
     db.session.commit()
     return jsonify({'message': 'User added successfully'}), 201
 
-# Route to fetch all users
-@app.route('/users', methods=['GET'])
-def get_users():
-    users_list = User.query.all()
-    users = [{
-        'userid': user.userid,
-        'username': user.username,
-        'sessions': [{
-            'sessionid': session.sessionid,
-            'starttime': session.starttime.isoformat()  # Format datetime for JSON
-        } for session in user.sessions]
-    } for user in users_list]
-    return jsonify(users)
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
 
-@app.route('/user/<uid>/session', methods=['GET'])
-def chat_with_openai(uid):
-    print(uid)
-
-
-# Route to create a new session for a user
-@app.route('/user/<uid>/session', methods=['POST'])
-def create_session(uid):
-    user = User.query.filter_by(userid=uid).first()
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-
-    # Create a new session for the user
-    new_session = Session(userid=user.userid)
-    db.session.add(new_session)
-    db.session.commit()
-
-    return jsonify({
-        "message": "New session created successfully",
-        "session_id": new_session.sessionid,
-        "user_id": user.userid
-    }), 201
 
 @app.route('/session/<session_id>', methods=['DELETE'])
 def delete_session(session_id):
@@ -128,6 +129,7 @@ def chat_with_openai():
     
     
 if __name__ == '__main__':
+   with app.app_context():
     db.create_all()  # Creates the table if it doesn't already exist
     print("Database tables created.")
     app.run(debug=True, port=8080)
