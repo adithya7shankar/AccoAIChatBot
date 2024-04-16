@@ -16,8 +16,8 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
 # OpenAI API key setup
-# openai.api_key = os.getenv("OPENAI_API_KEY")
-openai.api_key = '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'
+openai.api_key = os.getenv("OPENAI_API_KEY")
+#openai.api_key = 'youropenaiAPIkey'
 # Define the Users model
 class User(db.Model):
     __tablename__ = 'users'
@@ -115,4 +115,4 @@ def chat_with_openai():
 if __name__ == '__main__':
     db.create_all()  # Creates the table if it doesn't already exist
     print("Database tables created.")
-    app.run(debug=True)
+    app.run(debug=True, port=8080)
