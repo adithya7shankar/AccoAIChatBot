@@ -17,7 +17,6 @@ db = SQLAlchemy(app)
 
 # OpenAI API key setup
 openai.api_key = os.getenv("OPENAI_API_KEY")
-#openai.api_key = 'youropenaiAPIkey'
 # Define the Users model
 class User(db.Model):
     __tablename__ = 'users'
