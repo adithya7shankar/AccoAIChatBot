@@ -16,8 +16,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
 # OpenAI API key setup
-# openai.api_key = os.getenv("OPENAI_API_KEY")
-openai.api_key = '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'
+openai.api_key = os.getenv("OPENAI_API_KEY")
 # Define the Users model
 class User(db.Model):
     __tablename__ = 'users'
