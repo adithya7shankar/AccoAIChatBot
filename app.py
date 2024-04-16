@@ -66,28 +66,50 @@ def get_users():
     } for user in users_list]
     return jsonify(users)
 
+@app.route('/user/<uid>/session', methods=['GET'])
+def chat_with_openai(uid):
+    print(uid)
 
 
-# Route to handle chat requests
+# Route to create a new session for a user
+@app.route('/user/<uid>/session', methods=['POST'])
+def create_session(uid):
+    user = User.query.filter_by(userid=uid).first()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    # Create a new session for the user
+    new_session = Session(userid=user.userid)
+    db.session.add(new_session)
+    db.session.commit()
+
+    return jsonify({
+        "message": "New session created successfully",
+        "session_id": new_session.sessionid,
+        "user_id": user.userid
+    }), 201
+
+@app.route('/session/<session_id>', methods=['DELETE'])
+def delete_session(session_id):
+    session_to_delete = Session.query.get(session_id)
+    if not session_to_delete:
+        return jsonify({"error": "Session not found"}), 404
+
+    db.session.delete(session_to_delete)
+    db.session.commit()
+
+    return jsonify({"message": "Session deleted successfully"}), 200
+
 @app.route('/chat', methods=['POST'])
 def chat_with_openai():
     data = request.get_json()
     user_input = data.get('message')
     userid = data.get('userid')
-    wantnextsession = data.get('wantnextsession')
+    
     user = User.query.filter_by(userid=userid).first()
     if not user:
         return jsonify({"error": "User not found"}), 404
-
-    # Check if there is an existing session within the last 30 minutes (or any other logic)
-    last_session = Session.query.filter_by(userid=userid).order_by(Session.sessionid.desc()).first()
-    if (last_session and (datetime.utcnow() - last_session.starttime <= timedelta(minutes=30))) and (not wantnextsession):
-        new_session = last_session
-    else:
-        # Create a new session if no active session exists
-        new_session = Session(userid=user.userid)
-        db.session.add(new_session)
-        db.session.commit()
+    
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",  # specify the model
@@ -95,22 +117,16 @@ def chat_with_openai():
         )
         chat_response = response['choices'][0]['message']['content']
 
-        new_message = Message(sessionid=new_session.sessionid, userid=user.userid, messagetext=user_input, reply=chat_response)
+        new_message = Message(sessionid=None, userid=user.userid, messagetext=user_input, reply=chat_response)
         db.session.add(new_message)
         db.session.commit()
 
-        return jsonify({
-            "response": chat_response,
-            "message_details": {
-                "session_id": new_session.sessionid,
-                "userid": user.userid
-            }
-        })
+        return jsonify({"response": chat_response}), 200
 
     except Exception as e:
-        db.session.rollback()
         return jsonify({"error": str(e)}), 500
-
+    
+    
 if __name__ == '__main__':
     db.create_all()  # Creates the table if it doesn't already exist
     print("Database tables created.")
